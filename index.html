@@ -296,17 +296,29 @@
   .kosai .seal-box{text-align:center;vertical-align:middle;height:56px}
   .kosai [contenteditable]{outline:none}
   .kosai [contenteditable]:focus{background:#fff7d6}
-  .kosai b{font-weight:600;font-variant-numeric:tabular-nums;margin:0 2px}
+  /* 画面では編集できる空欄をうっすら色づけ（印刷では消す） */
+  .kosai td[contenteditable]:empty{background:#eef4ff}
+  .kosai b{font-weight:600;font-variant-numeric:tabular-nums;margin:0 1px}
+  .kosai b[contenteditable]{
+    display:inline-block;min-width:1.7em;text-align:center;
+    border-bottom:1px dotted #9bb4d6;padding:0 2px;
+  }
+  .kosai-hint{
+    text-align:center;font-size:12px;color:var(--ink-soft);
+    padding:0 16px 10px;
+  }
 
   @media print{
     body{background:#fff}
     body > *{visibility:hidden}
     #kosaiOverlay,#kosaiOverlay *{visibility:visible}
     #kosaiOverlay{position:absolute;inset:0;background:#fff;overflow:visible;display:block!important}
-    .kosai-bar{display:none}
+    .kosai-bar,.kosai-hint{display:none}
     .kosai-wrap{padding:0}
     .kosai-paper{box-shadow:none;width:auto;max-width:none;padding:0}
     .kosai [contenteditable]:focus{background:none}
+    .kosai td[contenteditable]:empty{background:none}
+    .kosai b[contenteditable]{border-bottom:none}
     @page{size:A4 portrait;margin:12mm}
   }
 </style>
@@ -412,6 +424,7 @@
       <button class="pr" id="kosaiPrint">印刷 / PDF</button>
     </div>
   </div>
+  <div class="kosai-hint">各欄をタップして直接修正・追記できます（青い欄は空欄）</div>
   <div class="kosai-wrap">
     <div class="kosai-paper" id="kosaiPaper">
       <table class="kosai">
@@ -423,7 +436,7 @@
 
         <tr>
           <td class="lbl" colspan="3">申 請 日</td>
-          <td class="ctr" colspan="13">令和<b id="k_appG"></b>年<b id="k_appM"></b>月<b id="k_appD"></b>日</td>
+          <td class="ctr" colspan="13">令和<b contenteditable id="k_appG"></b>年<b contenteditable id="k_appM"></b>月<b contenteditable id="k_appD"></b>日</td>
           <td class="seal-h" colspan="3">決 済</td>
           <td class="seal-h" colspan="3">管理職</td>
           <td class="seal-h" colspan="3">担 当</td>
@@ -442,7 +455,7 @@
 
         <tr>
           <td class="lbl" colspan="3">接 待 日</td>
-          <td class="ctr" colspan="22">令和<b id="k_setG"></b>年<b id="k_setM"></b>月<b id="k_setD"></b>日</td>
+          <td class="ctr" colspan="22">令和<b contenteditable id="k_setG"></b>年<b contenteditable id="k_setM"></b>月<b contenteditable id="k_setD"></b>日</td>
         </tr>
         <tr>
           <td class="lbl" colspan="3">接待会社名</td>
