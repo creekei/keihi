@@ -271,10 +271,12 @@
   .kosai-bar button{padding:9px 16px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer}
   .kosai-bar .pr{background:var(--accent);color:#fff}
   .kosai-bar .cl{background:var(--surface-2);color:var(--ink-soft);border:1px solid var(--line)}
-  .kosai-wrap{padding:16px;display:flex;justify-content:center}
+  .kosai-wrap{padding:16px;display:flex;justify-content:center;overflow:hidden}
+  /* A4比率のまま画面幅に縮小するための入れ物（JSでサイズ指定） */
+  .kosai-scaler{margin:0 auto}
   .kosai-paper{
-    background:#fff;color:#000;width:190mm;max-width:100%;padding:12mm 10mm;
-    box-shadow:0 8px 30px #0008;
+    background:#fff;color:#000;width:190mm;padding:12mm 10mm;
+    box-shadow:0 8px 30px #0008;transform-origin:top left;
     -webkit-print-color-adjust:exact;print-color-adjust:exact;
   }
   table.kosai{
@@ -314,8 +316,9 @@
     #kosaiOverlay,#kosaiOverlay *{visibility:visible}
     #kosaiOverlay{position:absolute;inset:0;background:#fff;overflow:visible;display:block!important}
     .kosai-bar,.kosai-hint{display:none}
-    .kosai-wrap{padding:0}
-    .kosai-paper{box-shadow:none;width:auto;max-width:none;padding:0}
+    .kosai-wrap{padding:0;overflow:visible}
+    .kosai-scaler{width:auto!important;height:auto!important;margin:0}
+    .kosai-paper{box-shadow:none;width:auto;max-width:none;padding:0;transform:none!important}
     .kosai [contenteditable]:focus{background:none}
     .kosai td[contenteditable]:empty{background:none}
     .kosai b[contenteditable]{border-bottom:none}
@@ -419,17 +422,69 @@
   </div>
 </div>
 
-<!-- 交際費支出伺 overlay -->
+<!-- 交際費支出伺 入力シート -->
+<div class="sheet" id="kosaiFormSheet">
+  <div class="grab"></div>
+  <div class="sheet-head">
+    <h2>交際費支出伺の入力</h2>
+    <button class="x" id="kosaiFormClose">×</button>
+  </div>
+  <div class="sheet-body">
+    <div class="row2">
+      <label class="fl"><span class="ft">申請日</span>
+        <input class="inp" id="kf_appDate" type="date"></label>
+      <label class="fl"><span class="ft">接待日</span>
+        <input class="inp" id="kf_setDate" type="date"></label>
+    </div>
+    <div class="row2">
+      <label class="fl"><span class="ft">所属</span>
+        <input class="inp" id="kf_shozoku"></label>
+      <label class="fl"><span class="ft">氏名</span>
+        <input class="inp" id="kf_shimei"></label>
+    </div>
+    <label class="fl"><span class="ft">接待会社名</span>
+      <input class="inp" id="kf_kaisha" placeholder="任意"></label>
+    <label class="fl"><span class="ft">社外 参加者名</span>
+      <input class="inp" id="kf_shagai"></label>
+    <label class="fl"><span class="ft">社外 合計人数</span>
+      <input class="inp" id="kf_shagaiCnt" inputmode="numeric" placeholder="名（任意）"></label>
+    <label class="fl"><span class="ft">社内 参加者名</span>
+      <input class="inp" id="kf_shanai"></label>
+    <label class="fl"><span class="ft">社内 合計人数</span>
+      <input class="inp" id="kf_shanaiCnt" inputmode="numeric" placeholder="名"></label>
+    <label class="fl"><span class="ft">内容</span>
+      <input class="inp" id="kf_naiyo"></label>
+    <label class="fl"><span class="ft">会場名</span>
+      <input class="inp" id="kf_kaijo"></label>
+    <label class="fl"><span class="ft">住所</span>
+      <input class="inp" id="kf_juusho"></label>
+    <label class="fl"><span class="ft">電話番号</span>
+      <input class="inp" id="kf_denwa" inputmode="tel"></label>
+    <div class="row2">
+      <label class="fl"><span class="ft">使用金額</span>
+        <input class="inp" id="kf_kingaku" inputmode="numeric"></label>
+      <label class="fl"><span class="ft">仮払金</span>
+        <input class="inp" id="kf_karibarai" inputmode="numeric" placeholder="任意"></label>
+    </div>
+    <label class="fl"><span class="ft">過不足金</span>
+      <input class="inp" id="kf_kabusoku" inputmode="numeric" placeholder="任意"></label>
+
+    <button class="save-btn" id="kosaiPreviewBtn">プレビューで確認 →</button>
+  </div>
+</div>
+
+<!-- 交際費支出伺 プレビュー overlay -->
 <div id="kosaiOverlay">
   <div class="kosai-bar">
-    <h2>交際費支出伺</h2>
+    <h2>プレビュー</h2>
     <div class="grp">
-      <button class="cl" id="kosaiClose">閉じる</button>
+      <button class="cl" id="kosaiBack">← 入力に戻る</button>
       <button class="pr" id="kosaiPrint">印刷 / PDF</button>
     </div>
   </div>
-  <div class="kosai-hint">各欄をタップして直接修正・追記できます（青い欄は空欄）</div>
+  <div class="kosai-hint">内容を確認して「印刷 / PDF」で発行（各欄タップで微修正も可）</div>
   <div class="kosai-wrap">
+   <div class="kosai-scaler" id="kosaiScaler">
     <div class="kosai-paper" id="kosaiPaper">
       <table class="kosai">
         <colgroup>
@@ -520,6 +575,7 @@
         </tr>
       </table>
     </div>
+   </div>
   </div>
 </div>
 
@@ -889,44 +945,93 @@ function sealSeisan(){
     <text x="25" y="40" text-anchor="middle" font-size="17" fill="#c8102e" font-weight="bold">川</text>
   </svg>`;
 }
+// ① 入力シートを開く（経費データ＋記憶から初期値を入れる）
 function openKosai(){
   const e=entries.find(x=>x.id===editingId);
   if(!e){toast("経費を保存してから作成してください",true);return}
   const k=getKosai();
-  // 記憶セル（所属・氏名・社内など毎回ほぼ同じもの）
-  ["shozoku","shimei","shagai","shagai2","shagaiCnt","shanai","shanai2","shanaiCnt"]
-    .forEach(key=>{const el=document.getElementById("k_"+key);if(el)el.textContent=k[key]||""});
-  // 申請日＝本日（和暦）
-  const today=wareki(new Date().toISOString().slice(0,10));
-  $("#k_appG").textContent=today.y;$("#k_appM").textContent=today.m;$("#k_appD").textContent=today.d;
-  // 接待日＝領収書の日付（和暦）
-  const sd=wareki(normDate(e.date));
-  $("#k_setG").textContent=sd?sd.y:"";$("#k_setM").textContent=sd?sd.m:"";$("#k_setD").textContent=sd?sd.d:"";
-  // 接待会社名＝空欄
-  $("#k_kaisha").textContent="";
-  // 領収書（経費データ）から
-  $("#k_kaijo").textContent=e.shop||"";
-  $("#k_juusho").textContent=e.address||"";
-  $("#k_denwa").textContent=e.phone||"";
-  $("#k_kingaku").textContent=e.amount?yen(e.amount):"";
-  // 内容＝宛名（ご芳名）＋品名 を推測
-  $("#k_naiyo").textContent=[e.memo,e.item].filter(Boolean).join("　");
-  // 社外参加者＝宛名（ご芳名）があれば推測、無ければ記憶デフォルト
-  if(e.memo)$("#k_shagai").textContent=e.memo;
-  $("#k_karibarai").textContent="";
-  $("#k_kabusoku").textContent="";
-  // 朱印
-  $("#k_tantoBox").innerHTML=sealDate(today);
+  const today=new Date().toISOString().slice(0,10);
+  $("#kf_appDate").value=today;
+  $("#kf_setDate").value=normDate(e.date)||"";
+  $("#kf_shozoku").value=k.shozoku||"";
+  $("#kf_shimei").value=k.shimei||"";
+  $("#kf_kaisha").value="";
+  // 社外参加者＝宛名（ご芳名）があれば推測、無ければ記憶
+  $("#kf_shagai").value=e.memo||k.shagai||"";
+  $("#kf_shagaiCnt").value=k.shagaiCnt||"";
+  $("#kf_shanai").value=k.shanai||"";
+  $("#kf_shanaiCnt").value=k.shanaiCnt||"";
+  // 内容＝宛名（ご芳名）＋品名
+  $("#kf_naiyo").value=[e.memo,e.item].filter(Boolean).join("　");
+  $("#kf_kaijo").value=e.shop||"";
+  $("#kf_juusho").value=e.address||"";
+  $("#kf_denwa").value=e.phone||"";
+  $("#kf_kingaku").value=e.amount||"";
+  $("#kf_karibarai").value="";
+  $("#kf_kabusoku").value="";
+  closeSheets();
+  openSheet("#kosaiFormSheet");
+}
+// 記憶（毎回ほぼ同じ欄のみ）を保存
+function saveKosaiMemory(){
+  let cur={};try{cur=JSON.parse(localStorage.getItem(LS_KOSAI)||"{}")}catch(_){}
+  Object.assign(cur,{
+    shozoku:$("#kf_shozoku").value.trim(),
+    shimei:$("#kf_shimei").value.trim(),
+    shagai:$("#kf_shagai").value.trim(),
+    shagaiCnt:$("#kf_shagaiCnt").value.trim(),
+    shanai:$("#kf_shanai").value.trim(),
+    shanaiCnt:$("#kf_shanaiCnt").value.trim()
+  });
+  localStorage.setItem(LS_KOSAI,JSON.stringify(cur));
+}
+function fmtNum(v){v=String(v==null?"":v).replace(/[^0-9.]/g,"");return v?yen(v):""}
+// ② 入力内容を用紙に流し込んでプレビュー表示
+function previewKosai(){
+  saveKosaiMemory();
+  const appW=wareki(normDate($("#kf_appDate").value));
+  const setW=wareki(normDate($("#kf_setDate").value));
+  $("#k_appG").textContent=appW?appW.y:"";$("#k_appM").textContent=appW?appW.m:"";$("#k_appD").textContent=appW?appW.d:"";
+  $("#k_setG").textContent=setW?setW.y:"";$("#k_setM").textContent=setW?setW.m:"";$("#k_setD").textContent=setW?setW.d:"";
+  $("#k_shozoku").textContent=$("#kf_shozoku").value;
+  $("#k_shimei").textContent=$("#kf_shimei").value;
+  $("#k_kaisha").textContent=$("#kf_kaisha").value;
+  $("#k_shagai").textContent=$("#kf_shagai").value;$("#k_shagai2").textContent="";
+  $("#k_shagaiCnt").textContent=$("#kf_shagaiCnt").value;
+  $("#k_shanai").textContent=$("#kf_shanai").value;$("#k_shanai2").textContent="";
+  $("#k_shanaiCnt").textContent=$("#kf_shanaiCnt").value;
+  $("#k_naiyo").textContent=$("#kf_naiyo").value;
+  $("#k_kaijo").textContent=$("#kf_kaijo").value;
+  $("#k_juusho").textContent=$("#kf_juusho").value;
+  $("#k_denwa").textContent=$("#kf_denwa").value;
+  $("#k_kingaku").textContent=fmtNum($("#kf_kingaku").value);
+  $("#k_karibarai").textContent=fmtNum($("#kf_karibarai").value);
+  $("#k_kabusoku").textContent=fmtNum($("#kf_kabusoku").value);
+  $("#k_tantoBox").innerHTML=sealDate(appW||wareki(new Date().toISOString().slice(0,10)));
   $("#k_seisanBox").innerHTML=sealSeisan();
+  closeSheets();
   $("#kosaiOverlay").classList.add("on");
   $("#kosaiOverlay").scrollTop=0;
   document.body.style.overflow="hidden";
+  requestAnimationFrame(scaleKosaiPaper);
 }
-function closeKosai(){
-  saveKosai();
+// A4比率を保ったまま画面幅に合わせて縮小
+function scaleKosaiPaper(){
+  const paper=$("#kosaiPaper"),scaler=$("#kosaiScaler"),wrap=$("#kosaiOverlay .kosai-wrap");
+  if(!paper||!scaler||!wrap)return;
+  paper.style.transform="none";scaler.style.width="";scaler.style.height="";
+  const pw=paper.offsetWidth,ph=paper.offsetHeight;
+  const s=Math.min(1,(wrap.clientWidth-32)/pw);
+  paper.style.transform="scale("+s+")";
+  scaler.style.width=(pw*s)+"px";
+  scaler.style.height=(ph*s)+"px";
+}
+// プレビューから入力シートへ戻る
+function backToKosaiForm(){
   $("#kosaiOverlay").classList.remove("on");
-  document.body.style.overflow="";
+  openSheet("#kosaiFormSheet");
 }
+// ③ 発行（印刷／PDF）。プレビューでの微修正も保存
 function printKosai(){saveKosai();window.print()}
 
 /* ---------- sheets ---------- */
@@ -939,6 +1044,7 @@ function closeSheets(){
   $("#scrim").classList.remove("on");
   $("#entrySheet").classList.remove("on");
   $("#setSheet").classList.remove("on");
+  $("#kosaiFormSheet").classList.remove("on");
   document.body.style.overflow="";
 }
 
@@ -952,8 +1058,11 @@ function init(){
   $("#saveBtn").onclick=saveEntry;
   $("#delBtn").onclick=delEntry;
   $("#kosaiBtn").onclick=openKosai;
-  $("#kosaiClose").onclick=closeKosai;
+  $("#kosaiFormClose").onclick=closeSheets;
+  $("#kosaiPreviewBtn").onclick=previewKosai;
+  $("#kosaiBack").onclick=backToKosaiForm;
   $("#kosaiPrint").onclick=printKosai;
+  window.addEventListener("resize",()=>{if($("#kosaiOverlay").classList.contains("on"))scaleKosaiPaper()});
   $("#receiptBox").onclick=()=>$("#fileInput").click();
   $("#fileInput").onchange=e=>handleFile(e.target.files[0]);
   $("#aiBtn").onclick=runAI;
