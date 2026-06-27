@@ -248,6 +248,67 @@
   .toast.err{border-color:#e07a7a66}
 
   .hide{display:none!important}
+
+  /* ===== 交際費支出伺 ===== */
+  .kosai-btn{
+    width:100%;margin-top:10px;padding:13px;border-radius:12px;cursor:pointer;
+    background:var(--surface-2);color:var(--gold);border:1px solid #d8a65755;
+    font-size:14.5px;font-weight:700;letter-spacing:.02em;
+  }
+  .kosai-btn:active{background:#283149}
+  #kosaiOverlay{
+    position:fixed;inset:0;z-index:100;background:#3a3f4b;
+    overflow:auto;-webkit-overflow-scrolling:touch;display:none;
+  }
+  #kosaiOverlay.on{display:block}
+  .kosai-bar{
+    position:sticky;top:0;z-index:2;display:flex;gap:10px;align-items:center;justify-content:space-between;
+    padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--line);
+    padding-top:calc(12px + env(safe-area-inset-top));
+  }
+  .kosai-bar h2{font-size:15px;font-weight:700;color:var(--ink)}
+  .kosai-bar .grp{display:flex;gap:8px;flex:none}
+  .kosai-bar button{padding:9px 16px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer}
+  .kosai-bar .pr{background:var(--accent);color:#fff}
+  .kosai-bar .cl{background:var(--surface-2);color:var(--ink-soft);border:1px solid var(--line)}
+  .kosai-wrap{padding:16px;display:flex;justify-content:center}
+  .kosai-paper{
+    background:#fff;color:#000;width:190mm;max-width:100%;padding:12mm 10mm;
+    box-shadow:0 8px 30px #0008;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;
+  }
+  table.kosai{
+    width:100%;border-collapse:collapse;table-layout:fixed;
+    font-family:"Hiragino Mincho ProN","YuMincho","Yu Mincho",serif;color:#000;
+  }
+  table.kosai td{
+    border:1px solid #000;padding:2px 4px;font-size:11px;line-height:1.35;
+    vertical-align:middle;height:26px;word-break:break-all;overflow-wrap:anywhere;
+  }
+  .kosai .title{
+    border:none;text-align:center;font-size:22px;font-weight:700;
+    letter-spacing:.45em;padding:2px 0 14px;
+  }
+  .kosai .lbl{text-align:center;background:#eee;font-weight:600;font-size:10.5px;letter-spacing:.05em}
+  .kosai .ctr{text-align:center}
+  .kosai .ed{min-height:20px}
+  .kosai .seal-h{text-align:center;background:#eee;font-size:9.5px;padding:1px}
+  .kosai .seal-box{text-align:center;vertical-align:middle;height:56px}
+  .kosai [contenteditable]{outline:none}
+  .kosai [contenteditable]:focus{background:#fff7d6}
+  .kosai b{font-weight:600;font-variant-numeric:tabular-nums;margin:0 2px}
+
+  @media print{
+    body{background:#fff}
+    body > *{visibility:hidden}
+    #kosaiOverlay,#kosaiOverlay *{visibility:visible}
+    #kosaiOverlay{position:absolute;inset:0;background:#fff;overflow:visible;display:block!important}
+    .kosai-bar{display:none}
+    .kosai-wrap{padding:0}
+    .kosai-paper{box-shadow:none;width:auto;max-width:none;padding:0}
+    .kosai [contenteditable]:focus{background:none}
+    @page{size:A4 portrait;margin:12mm}
+  }
 </style>
 </head>
 <body>
@@ -300,6 +361,7 @@
       <input class="inp" id="fMemo" placeholder="任意"></label>
 
     <button class="save-btn" id="saveBtn">保存する</button>
+    <button class="kosai-btn hide" id="kosaiBtn">📄 交際費支出伺を作成</button>
     <button class="del-btn hide" id="delBtn">この経費を削除</button>
   </div>
 </div>
@@ -341,6 +403,109 @@
   </div>
 </div>
 
+<!-- 交際費支出伺 overlay -->
+<div id="kosaiOverlay">
+  <div class="kosai-bar">
+    <h2>交際費支出伺</h2>
+    <div class="grp">
+      <button class="cl" id="kosaiClose">閉じる</button>
+      <button class="pr" id="kosaiPrint">印刷 / PDF</button>
+    </div>
+  </div>
+  <div class="kosai-wrap">
+    <div class="kosai-paper" id="kosaiPaper">
+      <table class="kosai">
+        <colgroup>
+          <col><col><col><col><col><col><col><col><col><col><col><col><col>
+          <col><col><col><col><col><col><col><col><col><col><col><col>
+        </colgroup>
+        <tr><td class="title" colspan="25">交 際 費 支 出 伺</td></tr>
+
+        <tr>
+          <td class="lbl" colspan="3">申 請 日</td>
+          <td class="ctr" colspan="13">令和<b id="k_appG"></b>年<b id="k_appM"></b>月<b id="k_appD"></b>日</td>
+          <td class="seal-h" colspan="3">決 済</td>
+          <td class="seal-h" colspan="3">管理職</td>
+          <td class="seal-h" colspan="3">担 当</td>
+        </tr>
+        <tr>
+          <td class="lbl" colspan="3">所　属</td>
+          <td class="ed" colspan="13" contenteditable data-k="shozoku" id="k_shozoku"></td>
+          <td class="seal-box" rowspan="2" colspan="3"></td>
+          <td class="seal-box" rowspan="2" colspan="3"></td>
+          <td class="seal-box" rowspan="2" colspan="3" id="k_tantoBox"></td>
+        </tr>
+        <tr>
+          <td class="lbl" colspan="3">氏　名</td>
+          <td class="ed" colspan="13" contenteditable data-k="shimei" id="k_shimei"></td>
+        </tr>
+
+        <tr>
+          <td class="lbl" colspan="3">接 待 日</td>
+          <td class="ctr" colspan="22">令和<b id="k_setG"></b>年<b id="k_setM"></b>月<b id="k_setD"></b>日</td>
+        </tr>
+        <tr>
+          <td class="lbl" colspan="3">接待会社名</td>
+          <td class="ed" colspan="22" contenteditable data-k="kaisha" id="k_kaisha"></td>
+        </tr>
+
+        <tr>
+          <td class="lbl" rowspan="4" colspan="3">参加者名</td>
+          <td class="lbl" rowspan="2" colspan="3">社 外</td>
+          <td class="ed" colspan="19" contenteditable data-k="shagai" id="k_shagai"></td>
+        </tr>
+        <tr>
+          <td class="ed" colspan="15" contenteditable data-k="shagai2" id="k_shagai2"></td>
+          <td class="lbl" colspan="2">合 計</td>
+          <td class="ctr" colspan="1" contenteditable data-k="shagaiCnt" id="k_shagaiCnt"></td>
+          <td class="ctr" colspan="1">名</td>
+        </tr>
+        <tr>
+          <td class="lbl" rowspan="2" colspan="3">社 内</td>
+          <td class="ed" colspan="19" contenteditable data-k="shanai" id="k_shanai"></td>
+        </tr>
+        <tr>
+          <td class="ed" colspan="15" contenteditable data-k="shanai2" id="k_shanai2"></td>
+          <td class="lbl" colspan="2">合 計</td>
+          <td class="ctr" colspan="1" contenteditable data-k="shanaiCnt" id="k_shanaiCnt"></td>
+          <td class="ctr" colspan="1">名</td>
+        </tr>
+
+        <tr>
+          <td class="lbl" colspan="3">内　容</td>
+          <td class="ed" colspan="22" contenteditable id="k_naiyo"></td>
+        </tr>
+
+        <tr>
+          <td class="lbl" colspan="3">会 場 名</td>
+          <td class="ed" colspan="8" contenteditable id="k_kaijo"></td>
+          <td class="lbl" colspan="4">仮 払 金</td>
+          <td class="ed ctr" colspan="3" contenteditable id="k_karibarai"></td>
+          <td class="ctr" colspan="1">円</td>
+          <td class="seal-h" colspan="3">仮払受領印</td>
+          <td class="seal-h" colspan="3">精 算 印</td>
+        </tr>
+        <tr>
+          <td class="lbl" colspan="3">住　所</td>
+          <td class="ed" colspan="8" contenteditable data-k="juusho" id="k_juusho"></td>
+          <td class="lbl" colspan="4">使用金額</td>
+          <td class="ed ctr" colspan="3" contenteditable id="k_kingaku"></td>
+          <td class="ctr" colspan="1">円</td>
+          <td class="seal-box" rowspan="2" colspan="3"></td>
+          <td class="seal-box" rowspan="2" colspan="3" id="k_seisanBox"></td>
+        </tr>
+        <tr>
+          <td class="lbl" colspan="3">電話番号</td>
+          <td class="ed" colspan="8" contenteditable data-k="denwa" id="k_denwa"></td>
+          <td class="lbl" colspan="4">過不足金</td>
+          <td class="ed ctr" colspan="3" contenteditable id="k_kabusoku"></td>
+          <td class="ctr" colspan="1">円</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -350,6 +515,7 @@ const CAT_ICON = {"会社用":"🏢","個人事業用":"💼","プライベー�
 const LS_KEY="keihi_entries_v1";
 const LS_API="keihi_apikey_v1";
 const LS_SYNC="keihi_syncurl_v1";
+const LS_KOSAI="keihi_kosai_v1";
 
 let entries=[];
 let editingId=null;
@@ -512,6 +678,7 @@ function openAdd(){
   editingId=null;
   $("#entryTitle").textContent="経費を追加";
   $("#delBtn").classList.add("hide");
+  $("#kosaiBtn").classList.add("hide");
   buildCatSeg(CATS[0]);
   $("#fDate").value=new Date().toISOString().slice(0,10);
   ["#fAmount","#fItem","#fShop","#fMemo"].forEach(s=>$(s).value="");
@@ -523,6 +690,7 @@ function openEntry(id){
   editingId=id;
   $("#entryTitle").textContent="経費を編集";
   $("#delBtn").classList.remove("hide");
+  $("#kosaiBtn").classList.remove("hide");
   buildCatSeg(e.category);
   $("#fDate").value=e.date||"";$("#fAmount").value=e.amount||"";
   $("#fItem").value=e.item||"";$("#fShop").value=e.shop||"";$("#fMemo").value=e.memo||"";
@@ -650,6 +818,86 @@ function renderExportList(){
   });
 }
 
+/* ---------- 交際費支出伺 ---------- */
+const KOSAI_DEFAULTS={
+  shozoku:"不動産部",
+  shimei:"小川　啓介",
+  kaisha:"新潟県宅地建物取引業協会　上越支部　会員各社",
+  shagai:"新潟県宅地建物取引業協会　上越支部　会員各位",
+  shagai2:"",
+  shagaiCnt:"",
+  shanai:"小川啓介",
+  shanai2:"",
+  shanaiCnt:"1",
+  juusho:"上越市大貫2-17-40",
+  denwa:"025-523-0681"
+};
+function getKosai(){
+  try{return Object.assign({},KOSAI_DEFAULTS,JSON.parse(localStorage.getItem(LS_KOSAI)||"{}"))}
+  catch(e){return Object.assign({},KOSAI_DEFAULTS)}
+}
+function saveKosai(){
+  const o={};
+  document.querySelectorAll("#kosaiPaper [data-k]").forEach(el=>{o[el.dataset.k]=el.textContent.trim()});
+  localStorage.setItem(LS_KOSAI,JSON.stringify(o));
+}
+// YYYY-MM-DD → {y,m,d}（令和=西暦−2018, 2019-05以降）
+function wareki(dStr){
+  const m=String(dStr||"").match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(!m)return null;
+  return {y:(+m[1])-2018,m:+m[2],d:+m[3]};
+}
+// 朱印SVG
+function sealDate(today){
+  return `<svg viewBox="0 0 60 60" width="50" height="50" style="display:block;margin:auto">
+    <circle cx="30" cy="30" r="27.5" fill="none" stroke="#c8102e" stroke-width="2"/>
+    <line x1="6" y1="22" x2="54" y2="22" stroke="#c8102e" stroke-width="1.3"/>
+    <line x1="6" y1="40" x2="54" y2="40" stroke="#c8102e" stroke-width="1.3"/>
+    <text x="30" y="17.5" text-anchor="middle" font-size="11" fill="#c8102e" font-weight="bold">小川</text>
+    <text x="30" y="35" text-anchor="middle" font-size="10.5" fill="#c8102e">${today.y}.${today.m}.${today.d}</text>
+    <text x="30" y="53" text-anchor="middle" font-size="11" fill="#c8102e">(啓)</text>
+  </svg>`;
+}
+function sealSeisan(){
+  return `<svg viewBox="0 0 50 50" width="44" height="44" style="display:block;margin:auto">
+    <circle cx="25" cy="25" r="22.5" fill="none" stroke="#c8102e" stroke-width="2.6"/>
+    <text x="25" y="21" text-anchor="middle" font-size="17" fill="#c8102e" font-weight="bold">小</text>
+    <text x="25" y="40" text-anchor="middle" font-size="17" fill="#c8102e" font-weight="bold">川</text>
+  </svg>`;
+}
+function openKosai(){
+  const e=entries.find(x=>x.id===editingId);
+  if(!e){toast("経費を保存してから作成してください",true);return}
+  const k=getKosai();
+  // 記憶セル
+  ["shozoku","shimei","kaisha","shagai","shagai2","shagaiCnt","shanai","shanai2","shanaiCnt","juusho","denwa"]
+    .forEach(key=>{const el=document.getElementById("k_"+key);if(el)el.textContent=k[key]||""});
+  // 申請日＝本日（和暦）
+  const today=wareki(new Date().toISOString().slice(0,10));
+  $("#k_appG").textContent=today.y;$("#k_appM").textContent=today.m;$("#k_appD").textContent=today.d;
+  // 接待日＝entry.date（和暦）
+  const sd=wareki(normDate(e.date));
+  $("#k_setG").textContent=sd?sd.y:"";$("#k_setM").textContent=sd?sd.m:"";$("#k_setD").textContent=sd?sd.d:"";
+  // 経費から
+  $("#k_kaijo").textContent=e.shop||"";
+  $("#k_kingaku").textContent=e.amount?yen(e.amount):"";
+  $("#k_naiyo").textContent=e.item||"";
+  $("#k_karibarai").textContent="";
+  $("#k_kabusoku").textContent="";
+  // 朱印
+  $("#k_tantoBox").innerHTML=sealDate(today);
+  $("#k_seisanBox").innerHTML=sealSeisan();
+  $("#kosaiOverlay").classList.add("on");
+  $("#kosaiOverlay").scrollTop=0;
+  document.body.style.overflow="hidden";
+}
+function closeKosai(){
+  saveKosai();
+  $("#kosaiOverlay").classList.remove("on");
+  document.body.style.overflow="";
+}
+function printKosai(){saveKosai();window.print()}
+
 /* ---------- sheets ---------- */
 function openSheet(sel){
   $("#scrim").classList.add("on");
@@ -672,6 +920,9 @@ function init(){
   $("#scrim").onclick=closeSheets;
   $("#saveBtn").onclick=saveEntry;
   $("#delBtn").onclick=delEntry;
+  $("#kosaiBtn").onclick=openKosai;
+  $("#kosaiClose").onclick=closeKosai;
+  $("#kosaiPrint").onclick=printKosai;
   $("#receiptBox").onclick=()=>$("#fileInput").click();
   $("#fileInput").onchange=e=>handleFile(e.target.files[0]);
   $("#aiBtn").onclick=runAI;
