@@ -367,10 +367,14 @@
     </div>
     <label class="fl"><span class="ft">品名・用途</span>
       <input class="inp" id="fItem" placeholder="例：書籍代"></label>
-    <label class="fl"><span class="ft">購入先・店名</span>
+    <label class="fl"><span class="ft">購入先・店名（会場名）</span>
       <input class="inp" id="fShop" placeholder="例：丸善"></label>
-    <label class="fl"><span class="ft">備考・メモ</span>
-      <input class="inp" id="fMemo" placeholder="任意"></label>
+    <label class="fl"><span class="ft">住所</span>
+      <input class="inp" id="fAddress" placeholder="例：新潟県上越市…"></label>
+    <label class="fl"><span class="ft">電話番号</span>
+      <input class="inp" id="fPhone" placeholder="例：0255-74-2456" inputmode="tel"></label>
+    <label class="fl"><span class="ft">備考・宛名（ご芳名など）</span>
+      <input class="inp" id="fMemo" placeholder="例：青年部会主催コンペ"></label>
 
     <button class="save-btn" id="saveBtn">保存する</button>
     <button class="kosai-btn hide" id="kosaiBtn">📄 交際費支出伺を作成</button>
@@ -459,7 +463,7 @@
         </tr>
         <tr>
           <td class="lbl" colspan="3">接待会社名</td>
-          <td class="ed" colspan="22" contenteditable data-k="kaisha" id="k_kaisha"></td>
+          <td class="ed" colspan="22" contenteditable id="k_kaisha"></td>
         </tr>
 
         <tr>
@@ -500,7 +504,7 @@
         </tr>
         <tr>
           <td class="lbl" colspan="3">住　所</td>
-          <td class="ed" colspan="8" contenteditable data-k="juusho" id="k_juusho"></td>
+          <td class="ed" colspan="8" contenteditable id="k_juusho"></td>
           <td class="lbl" colspan="4">使用金額</td>
           <td class="ed ctr" colspan="3" contenteditable id="k_kingaku"></td>
           <td class="ctr" colspan="1">円</td>
@@ -509,7 +513,7 @@
         </tr>
         <tr>
           <td class="lbl" colspan="3">電話番号</td>
-          <td class="ed" colspan="8" contenteditable data-k="denwa" id="k_denwa"></td>
+          <td class="ed" colspan="8" contenteditable id="k_denwa"></td>
           <td class="lbl" colspan="4">過不足金</td>
           <td class="ed ctr" colspan="3" contenteditable id="k_kabusoku"></td>
           <td class="ctr" colspan="1">円</td>
@@ -694,7 +698,7 @@ function openAdd(){
   $("#kosaiBtn").classList.add("hide");
   buildCatSeg(CATS[0]);
   $("#fDate").value=new Date().toISOString().slice(0,10);
-  ["#fAmount","#fItem","#fShop","#fMemo"].forEach(s=>$(s).value="");
+  ["#fAmount","#fItem","#fShop","#fAddress","#fPhone","#fMemo"].forEach(s=>$(s).value="");
   resetReceipt();
   openSheet("#entrySheet");
 }
@@ -707,6 +711,7 @@ function openEntry(id){
   buildCatSeg(e.category);
   $("#fDate").value=e.date||"";$("#fAmount").value=e.amount||"";
   $("#fItem").value=e.item||"";$("#fShop").value=e.shop||"";$("#fMemo").value=e.memo||"";
+  $("#fAddress").value=e.address||"";$("#fPhone").value=e.phone||"";
   if(e.receipt){showReceipt(e.receipt,false);pendingReceipt={dataUrl:e.receipt,b64:null,mime:null}}
   else resetReceipt();
   openSheet("#entrySheet");
@@ -719,6 +724,8 @@ function saveEntry(){
     amount:String($("#fAmount").value).replace(/[^0-9.]/g,""),
     item:$("#fItem").value.trim(),
     shop:$("#fShop").value.trim(),
+    address:$("#fAddress").value.trim(),
+    phone:$("#fPhone").value.trim(),
     memo:$("#fMemo").value.trim(),
     receipt:rec
   };
@@ -746,7 +753,10 @@ async function runAI(){
   const btn=$("#aiBtn");btn.disabled=true;
   btn.innerHTML=`<span class="spin"></span>解析中…`;
   try{
-    const prompt="この領収書から日付(date, YYYY-MM-DD形式)、金額(amount, 数字のみ)、品名(itemName)、店名(shopName)を抜き出してJSONだけ返して。余計な文章は不要。";
+    const prompt="この領収書から以下をJSONだけで返して（余計な文章は不要）。"
+      +"date(日付,YYYY-MM-DD), amount(合計金額,数字のみ), itemName(品名・用途), "
+      +"shopName(発行店名・会場名), address(発行店の住所), phone(発行店の電話番号), "
+      +"recipient(宛名・ご芳名。「様」は除く). 読み取れない項目は空文字にして。";
     const body={contents:[{parts:[{text:prompt},{inlineData:{mimeType:pendingReceipt.mime,data:pendingReceipt.b64}}]}]};
     const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`;
     const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
@@ -763,6 +773,9 @@ async function runAI(){
     if(r.amount!=null)$("#fAmount").value=String(r.amount).replace(/[^0-9.]/g,"");
     if(r.itemName)$("#fItem").value=r.itemName;
     if(r.shopName)$("#fShop").value=r.shopName;
+    if(r.address)$("#fAddress").value=r.address;
+    if(r.phone)$("#fPhone").value=r.phone;
+    if(r.recipient)$("#fMemo").value=r.recipient;
     toast("読み取り完了 ✨");
   }catch(err){
     toast("通信に失敗しました",true);
@@ -832,18 +845,16 @@ function renderExportList(){
 }
 
 /* ---------- 交際費支出伺 ---------- */
+// 記憶する欄（毎回ほぼ同じもののみ）。会社名・住所・電話・接待日などは領収書ごとに変わるので記憶しない。
 const KOSAI_DEFAULTS={
   shozoku:"不動産部",
   shimei:"小川　啓介",
-  kaisha:"新潟県宅地建物取引業協会　上越支部　会員各社",
   shagai:"新潟県宅地建物取引業協会　上越支部　会員各位",
   shagai2:"",
   shagaiCnt:"",
   shanai:"小川啓介",
   shanai2:"",
-  shanaiCnt:"1",
-  juusho:"上越市大貫2-17-40",
-  denwa:"025-523-0681"
+  shanaiCnt:"1"
 };
 function getKosai(){
   try{return Object.assign({},KOSAI_DEFAULTS,JSON.parse(localStorage.getItem(LS_KOSAI)||"{}"))}
@@ -882,19 +893,26 @@ function openKosai(){
   const e=entries.find(x=>x.id===editingId);
   if(!e){toast("経費を保存してから作成してください",true);return}
   const k=getKosai();
-  // 記憶セル
-  ["shozoku","shimei","kaisha","shagai","shagai2","shagaiCnt","shanai","shanai2","shanaiCnt","juusho","denwa"]
+  // 記憶セル（所属・氏名・社内など毎回ほぼ同じもの）
+  ["shozoku","shimei","shagai","shagai2","shagaiCnt","shanai","shanai2","shanaiCnt"]
     .forEach(key=>{const el=document.getElementById("k_"+key);if(el)el.textContent=k[key]||""});
   // 申請日＝本日（和暦）
   const today=wareki(new Date().toISOString().slice(0,10));
   $("#k_appG").textContent=today.y;$("#k_appM").textContent=today.m;$("#k_appD").textContent=today.d;
-  // 接待日＝entry.date（和暦）
+  // 接待日＝領収書の日付（和暦）
   const sd=wareki(normDate(e.date));
   $("#k_setG").textContent=sd?sd.y:"";$("#k_setM").textContent=sd?sd.m:"";$("#k_setD").textContent=sd?sd.d:"";
-  // 経費から
+  // 接待会社名＝空欄
+  $("#k_kaisha").textContent="";
+  // 領収書（経費データ）から
   $("#k_kaijo").textContent=e.shop||"";
+  $("#k_juusho").textContent=e.address||"";
+  $("#k_denwa").textContent=e.phone||"";
   $("#k_kingaku").textContent=e.amount?yen(e.amount):"";
-  $("#k_naiyo").textContent=e.item||"";
+  // 内容＝宛名（ご芳名）＋品名 を推測
+  $("#k_naiyo").textContent=[e.memo,e.item].filter(Boolean).join("　");
+  // 社外参加者＝宛名（ご芳名）があれば推測、無ければ記憶デフォルト
+  if(e.memo)$("#k_shagai").textContent=e.memo;
   $("#k_karibarai").textContent="";
   $("#k_kabusoku").textContent="";
   // 朱印
