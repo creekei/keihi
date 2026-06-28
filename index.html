@@ -424,7 +424,7 @@
       <button class="link" id="wipeBtn" style="color:var(--red)">すべて削除する</button>
     </div>
     <div class="set-row" style="border:none">
-      <div class="sd" style="margin:0">保存件数：<span id="cnt">0</span>件 ／ データはこの端末のブラウザに保存されています。</div>
+      <div class="sd" style="margin:0">保存件数：<span id="cnt">0</span>件 ／ データはこの端末のブラウザに保存されています。<br>バージョン：<span id="appVer"></span></div>
     </div>
   </div>
 </div>
@@ -596,6 +596,7 @@ const LS_KEY="keihi_entries_v1";
 const LS_API="keihi_apikey_v1";
 const LS_SYNC="keihi_syncurl_v1";
 const LS_KOSAI="keihi_kosai_v1";
+const APP_VER="2026.06.28-1";
 
 let entries=[];
 let editingId=null;
@@ -1058,6 +1059,7 @@ function closeSheets(){
 /* ---------- wire ---------- */
 function init(){
   load();render();
+  const verEl=$("#appVer");if(verEl)verEl.textContent=APP_VER;
   $("#fabAdd").onclick=openAdd;
   $("#entryClose").onclick=closeSheets;
   $("#setClose").onclick=closeSheets;
