@@ -263,11 +263,11 @@
     font-size:14.5px;font-weight:700;letter-spacing:.02em;
   }
   .kosai-btn:active{background:#283149}
-  #kosaiOverlay{
+  .doc-overlay{
     position:fixed;inset:0;z-index:100;background:#3a3f4b;
     overflow:auto;-webkit-overflow-scrolling:touch;display:none;
   }
-  #kosaiOverlay.on{display:block}
+  .doc-overlay.on{display:block}
   .kosai-bar{
     position:sticky;top:0;z-index:2;display:flex;gap:10px;align-items:center;justify-content:space-between;
     padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--line);
@@ -317,11 +317,23 @@
     padding:0 16px 10px;
   }
 
+  /* ===== 立替金精算書 ===== */
+  #tatekaePaper{font-family:"Hiragino Mincho ProN","YuMincho","Yu Mincho",serif;color:#000}
+  .tk-head{font-size:13px;margin-top:4px}
+  .tk-head2{font-size:13px;margin:3px 0 0 16px}
+  .tk-title{text-align:center;font-size:23px;font-weight:700;letter-spacing:.35em;margin:20px 0 24px}
+  .tk-info{margin:0 0 20px 80px;font-size:13.5px;line-height:2.1}
+  .tk-info .tk-il{display:inline-block;min-width:96px}
+  .tk-table{width:100%;border-collapse:collapse;font-size:13.5px}
+  .tk-table td{border:1px solid #000;padding:9px 12px;height:42px;vertical-align:middle}
+  .tk-table .tk-lbl{width:120px;text-align:center;font-size:15px;white-space:nowrap}
+  .tk-gap{height:26px}
+
   @media print{
     body{background:#fff}
     body > *{visibility:hidden}
-    #kosaiOverlay,#kosaiOverlay *{visibility:visible}
-    #kosaiOverlay{position:absolute;inset:0;background:#fff;overflow:visible;display:block!important}
+    .doc-overlay.on,.doc-overlay.on *{visibility:visible}
+    .doc-overlay.on{position:absolute;inset:0;background:#fff;overflow:visible;display:block!important}
     .kosai-bar,.kosai-hint{display:none}
     .kosai-wrap{padding:0;overflow:visible}
     .kosai-scaler{width:auto!important;height:auto!important;margin:0}
@@ -388,6 +400,7 @@
 
     <button class="save-btn" id="saveBtn">保存する</button>
     <button class="kosai-btn hide" id="kosaiBtn">📄 交際費支出伺を作成</button>
+    <button class="kosai-btn hide" id="tatekaeBtn">💴 立替金精算書を作成</button>
     <button class="del-btn hide" id="delBtn">この経費を削除</button>
   </div>
 </div>
@@ -481,7 +494,7 @@
 </div>
 
 <!-- 交際費支出伺 プレビュー overlay -->
-<div id="kosaiOverlay">
+<div id="kosaiOverlay" class="doc-overlay">
   <div class="kosai-bar">
     <h2>プレビュー</h2>
     <div class="grp">
@@ -586,6 +599,78 @@
   </div>
 </div>
 
+<!-- 立替金精算書 入力シート -->
+<div class="sheet" id="tatekaeFormSheet">
+  <div class="grab"></div>
+  <div class="sheet-head">
+    <h2>立替金精算書の入力</h2>
+    <button class="x" id="tatekaeFormClose">×</button>
+  </div>
+  <div class="sheet-body">
+    <div class="row2">
+      <label class="fl"><span class="ft">提出日</span>
+        <input class="inp" id="tf_date" type="date"></label>
+      <label class="fl"><span class="ft">支払日</span>
+        <input class="inp" id="tf_pay" type="date"></label>
+    </div>
+    <div class="row2">
+      <label class="fl"><span class="ft">所属部署</span>
+        <input class="inp" id="tf_bumon"></label>
+      <label class="fl"><span class="ft">氏名</span>
+        <input class="inp" id="tf_name"></label>
+    </div>
+    <label class="fl"><span class="ft">内容</span>
+      <input class="inp" id="tf_naiyo" placeholder="例：ahamo料金 5月使用分"></label>
+    <label class="fl"><span class="ft">支払先</span>
+      <input class="inp" id="tf_payee"></label>
+    <label class="fl"><span class="ft">登録番号</span>
+      <input class="inp" id="tf_regno"></label>
+    <label class="fl"><span class="ft">支払金額</span>
+      <input class="inp" id="tf_amount" inputmode="numeric"></label>
+    <label class="fl"><span class="ft">備考</span>
+      <input class="inp" id="tf_biko" placeholder="任意"></label>
+
+    <button class="save-btn" id="tatekaePreviewBtn">プレビューで確認 →</button>
+  </div>
+</div>
+
+<!-- 立替金精算書 プレビュー overlay -->
+<div id="tatekaeOverlay" class="doc-overlay">
+  <div class="kosai-bar">
+    <h2>プレビュー</h2>
+    <div class="grp">
+      <button class="cl" id="tatekaeBack">← 入力に戻る</button>
+      <button class="pr" id="tatekaePrint">印刷 / PDF</button>
+    </div>
+  </div>
+  <div class="kosai-hint">内容を確認して「印刷 / PDF」で発行</div>
+  <div class="kosai-wrap">
+   <div class="kosai-scaler" id="tatekaeScaler">
+    <div class="kosai-paper" id="tatekaePaper">
+      <div class="tk-head">カネヨ物産株式会社</div>
+      <div class="tk-head2">経理総務部宛</div>
+      <div class="tk-title">立 替 金 精 算 書</div>
+      <div class="tk-info">
+        <div><span class="tk-il">提出日</span><span id="t_date"></span></div>
+        <div><span class="tk-il">所属部署</span><span id="t_bumon"></span></div>
+        <div><span class="tk-il">氏名</span><span id="t_name"></span></div>
+      </div>
+      <table class="tk-table">
+        <tr><td class="tk-lbl">支払日</td><td id="t_pay"></td></tr>
+        <tr><td class="tk-lbl">内容</td><td id="t_naiyo"></td></tr>
+        <tr><td class="tk-lbl">支払先</td><td id="t_payee"></td></tr>
+        <tr><td class="tk-lbl">登録番号</td><td id="t_regno"></td></tr>
+        <tr><td class="tk-lbl">支払金額</td><td id="t_amount"></td></tr>
+      </table>
+      <div class="tk-gap"></div>
+      <table class="tk-table">
+        <tr><td class="tk-lbl">備考</td><td id="t_biko" style="height:90px;vertical-align:top"></td></tr>
+      </table>
+    </div>
+   </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -596,7 +681,8 @@ const LS_KEY="keihi_entries_v1";
 const LS_API="keihi_apikey_v1";
 const LS_SYNC="keihi_syncurl_v1";
 const LS_KOSAI="keihi_kosai_v1";
-const APP_VER="2026.06.28-1";
+const LS_TATEKAE="keihi_tatekae_v1";
+const APP_VER="2026.06.28-2";
 
 let entries=[];
 let editingId=null;
@@ -760,6 +846,7 @@ function openAdd(){
   $("#entryTitle").textContent="経費を追加";
   $("#delBtn").classList.add("hide");
   $("#kosaiBtn").classList.add("hide");
+  $("#tatekaeBtn").classList.add("hide");
   buildCatSeg(CATS[0]);
   $("#fDate").value=new Date().toISOString().slice(0,10);
   ["#fAmount","#fItem","#fShop","#fAddress","#fPhone","#fMemo"].forEach(s=>$(s).value="");
@@ -772,6 +859,7 @@ function openEntry(id){
   $("#entryTitle").textContent="経費を編集";
   $("#delBtn").classList.remove("hide");
   $("#kosaiBtn").classList.remove("hide");
+  $("#tatekaeBtn").classList.remove("hide");
   buildCatSeg(e.category);
   $("#fDate").value=e.date||"";$("#fAmount").value=e.amount||"";
   $("#fItem").value=e.item||"";$("#fShop").value=e.shop||"";$("#fMemo").value=e.memo||"";
@@ -1023,9 +1111,8 @@ function previewKosai(){
   document.body.style.overflow="hidden";
   requestAnimationFrame(scaleKosaiPaper);
 }
-// A4比率を保ったまま画面幅に合わせて縮小
-function scaleKosaiPaper(){
-  const paper=$("#kosaiPaper"),scaler=$("#kosaiScaler"),wrap=$("#kosaiOverlay .kosai-wrap");
+// A4比率を保ったまま画面幅に合わせて縮小（用紙・入れ物・枠を指定）
+function scalePaperEl(paper,scaler,wrap){
   if(!paper||!scaler||!wrap)return;
   paper.style.transform="none";scaler.style.width="";scaler.style.height="";
   const pw=paper.offsetWidth,ph=paper.offsetHeight;
@@ -1034,6 +1121,8 @@ function scaleKosaiPaper(){
   scaler.style.width=(pw*s)+"px";
   scaler.style.height=(ph*s)+"px";
 }
+function scaleKosaiPaper(){scalePaperEl($("#kosaiPaper"),$("#kosaiScaler"),$("#kosaiOverlay .kosai-wrap"))}
+function scaleTatekaePaper(){scalePaperEl($("#tatekaePaper"),$("#tatekaeScaler"),$("#tatekaeOverlay .kosai-wrap"))}
 // プレビューから入力シートへ戻る
 function backToKosaiForm(){
   $("#kosaiOverlay").classList.remove("on");
@@ -1041,6 +1130,74 @@ function backToKosaiForm(){
 }
 // ③ 発行（印刷／PDF）。プレビューでの微修正も保存
 function printKosai(){saveKosai();window.print()}
+
+/* ---------- 立替金精算書 ---------- */
+const TATEKAE_DEFAULTS={
+  bumon:"不動産部",
+  name:"小川啓介",
+  regno:"T8010401005011",
+  payee:"株式会社NTTドコモ"
+};
+function getTatekae(){
+  try{return Object.assign({},TATEKAE_DEFAULTS,JSON.parse(localStorage.getItem(LS_TATEKAE)||"{}"))}
+  catch(e){return Object.assign({},TATEKAE_DEFAULTS)}
+}
+function saveTatekaeMemory(){
+  let cur={};try{cur=JSON.parse(localStorage.getItem(LS_TATEKAE)||"{}")}catch(_){}
+  Object.assign(cur,{
+    bumon:$("#tf_bumon").value.trim(),
+    name:$("#tf_name").value.trim(),
+    regno:$("#tf_regno").value.trim(),
+    payee:$("#tf_payee").value.trim()
+  });
+  localStorage.setItem(LS_TATEKAE,JSON.stringify(cur));
+}
+// YYYY-MM-DD → "2026/6/24"
+function jpDate(dStr){
+  const m=String(dStr||"").match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  return m?((+m[1])+"/"+(+m[2])+"/"+(+m[3])):"";
+}
+// ① 入力シートを開く
+function openTatekae(){
+  const e=entries.find(x=>x.id===editingId);
+  if(!e){toast("経費を保存してから作成してください",true);return}
+  const t=getTatekae();
+  $("#tf_date").value=new Date().toISOString().slice(0,10);   // 提出日＝本日
+  $("#tf_pay").value=normDate(e.date)||"";                    // 支払日＝領収書日付
+  $("#tf_bumon").value=t.bumon||"";
+  $("#tf_name").value=t.name||"";
+  $("#tf_naiyo").value=e.item||"";                            // 内容＝領収書
+  $("#tf_payee").value=e.shop||t.payee||"";                   // 支払先
+  $("#tf_regno").value=t.regno||"";                           // 登録番号
+  $("#tf_amount").value=e.amount||"";                         // 支払金額
+  $("#tf_biko").value="";                                     // 備考＝空欄
+  closeSheets();
+  openSheet("#tatekaeFormSheet");
+}
+// ② プレビュー表示
+function previewTatekae(){
+  saveTatekaeMemory();
+  $("#t_date").textContent=jpDate(normDate($("#tf_date").value));
+  $("#t_bumon").textContent=$("#tf_bumon").value;
+  $("#t_name").textContent=$("#tf_name").value;
+  $("#t_pay").textContent=jpDate(normDate($("#tf_pay").value));
+  $("#t_naiyo").textContent=$("#tf_naiyo").value;
+  $("#t_payee").textContent=$("#tf_payee").value;
+  $("#t_regno").textContent=$("#tf_regno").value;
+  const amt=String($("#tf_amount").value).replace(/[^0-9.]/g,"");
+  $("#t_amount").textContent=amt?("¥"+yen(amt)):"";
+  $("#t_biko").textContent=$("#tf_biko").value;
+  closeSheets();
+  $("#tatekaeOverlay").classList.add("on");
+  $("#tatekaeOverlay").scrollTop=0;
+  document.body.style.overflow="hidden";
+  requestAnimationFrame(scaleTatekaePaper);
+}
+function backToTatekaeForm(){
+  $("#tatekaeOverlay").classList.remove("on");
+  openSheet("#tatekaeFormSheet");
+}
+function printTatekae(){window.print()}
 
 /* ---------- sheets ---------- */
 function openSheet(sel){
@@ -1053,6 +1210,7 @@ function closeSheets(){
   $("#entrySheet").classList.remove("on");
   $("#setSheet").classList.remove("on");
   $("#kosaiFormSheet").classList.remove("on");
+  $("#tatekaeFormSheet").classList.remove("on");
   document.body.style.overflow="";
 }
 
@@ -1071,7 +1229,15 @@ function init(){
   $("#kosaiPreviewBtn").onclick=previewKosai;
   $("#kosaiBack").onclick=backToKosaiForm;
   $("#kosaiPrint").onclick=printKosai;
-  window.addEventListener("resize",()=>{if($("#kosaiOverlay").classList.contains("on"))scaleKosaiPaper()});
+  $("#tatekaeBtn").onclick=openTatekae;
+  $("#tatekaeFormClose").onclick=closeSheets;
+  $("#tatekaePreviewBtn").onclick=previewTatekae;
+  $("#tatekaeBack").onclick=backToTatekaeForm;
+  $("#tatekaePrint").onclick=printTatekae;
+  window.addEventListener("resize",()=>{
+    if($("#kosaiOverlay").classList.contains("on"))scaleKosaiPaper();
+    if($("#tatekaeOverlay").classList.contains("on"))scaleTatekaePaper();
+  });
   $("#receiptBox").onclick=()=>$("#fileInput").click();
   $("#fileInput").onchange=e=>handleFile(e.target.files[0]);
   $("#aiBtn").onclick=runAI;
