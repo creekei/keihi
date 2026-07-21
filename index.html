@@ -682,7 +682,7 @@ const LS_API="keihi_apikey_v1";
 const LS_SYNC="keihi_syncurl_v1";
 const LS_KOSAI="keihi_kosai_v1";
 const LS_TATEKAE="keihi_tatekae_v1";
-const APP_VER="2026.06.28-2";
+const APP_VER="2026.06.28-3";
 
 let entries=[];
 let editingId=null;
@@ -692,7 +692,32 @@ let pendingReceipt=null; // {b64, mime, dataUrl}
 function load(){
   try{entries=JSON.parse(localStorage.getItem(LS_KEY)||"[]")}catch(e){entries=[]}
 }
-function persist(){localStorage.setItem(LS_KEY,JSON.stringify(entries))}
+// 容量オーバー(iOS Safariは約5MB)でも黙って失敗しないように保存する
+function persist(){
+  try{
+    localStorage.setItem(LS_KEY,JSON.stringify(entries));
+    return true;
+  }catch(err){
+    // ① 大きい領収書画像(>150KB)を端末から外して再試行
+    try{
+      entries=entries.map(e=>(e.receipt&&e.receipt.length>150000)?{...e,receipt:null}:e);
+      localStorage.setItem(LS_KEY,JSON.stringify(entries));
+      toast("容量が上限に近いため、大きな領収書画像を外しました",true);
+      return true;
+    }catch(err2){
+      // ② それでもダメなら全領収書画像を外して再試行
+      try{
+        entries=entries.map(e=>e.receipt?{...e,receipt:null}:e);
+        localStorage.setItem(LS_KEY,JSON.stringify(entries));
+        toast("容量不足のため領収書画像は保存しませんでした",true);
+        return true;
+      }catch(err3){
+        toast("端末の保存容量が不足しています",true);
+        return false;
+      }
+    }
+  }
+}
 function getKey(){return localStorage.getItem(LS_API)||""}
 function getSyncUrl(){return localStorage.getItem(LS_SYNC)||""}
 
@@ -937,15 +962,41 @@ async function runAI(){
 }
 
 /* ---------- file ---------- */
+// 画像を縮小・圧縮して容量を抑える（保存できる大きさに収める）
+function compressImage(dataUrl,cb){
+  const img=new Image();
+  img.onload=()=>{
+    const max=1400;
+    let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+    if(w>max||h>max){const r=Math.min(max/w,max/h);w=Math.round(w*r);h=Math.round(h*r)}
+    try{
+      const c=document.createElement("canvas");c.width=w;c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      cb(c.toDataURL("image/jpeg",0.6));
+    }catch(_){cb(dataUrl)}
+  };
+  img.onerror=()=>cb(dataUrl);
+  img.src=dataUrl;
+}
 function handleFile(file){
   if(!file)return;
-  const isPdf=file.type==="application/pdf";
+  const isPdf=file.type==="application/pdf"||/\.pdf$/i.test(file.name||"");
   const reader=new FileReader();
   reader.onload=()=>{
     const dataUrl=reader.result;
-    const b64=String(dataUrl).split(",")[1]||"";
-    pendingReceipt={b64,mime:file.type,dataUrl:isPdf?null:dataUrl};
-    showReceipt(isPdf?null:dataUrl,isPdf);
+    if(isPdf){
+      // PDFは画像化せず、AI解析用のb64のみ保持（端末には画像を保存しない）
+      const b64=String(dataUrl).split(",")[1]||"";
+      pendingReceipt={b64,mime:file.type||"application/pdf",dataUrl:null};
+      showReceipt(null,true);
+    }else{
+      // 画像は縮小・圧縮してから保持（localStorage容量オーバー対策）
+      compressImage(dataUrl,small=>{
+        const b64=String(small).split(",")[1]||"";
+        pendingReceipt={b64,mime:"image/jpeg",dataUrl:small};
+        showReceipt(small,false);
+      });
+    }
   };
   reader.readAsDataURL(file);
 }
