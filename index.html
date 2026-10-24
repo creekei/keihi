@@ -442,7 +442,7 @@
       <button class="link" id="wipeBtn" style="color:var(--red)">すべて削除する</button>
     </div>
     <div class="set-row" style="border:none">
-      <div class="sd" style="margin:0">保存件数：<span id="cnt">0</span>件 ／ データはこの端末のブラウザに保存されています。<br>バージョン：<span id="appVer"></span></div>
+      <div class="sd" style="margin:0">保存件数：<span id="cnt">0</span>件 ／ データはこの端末のブラウザに保存されています。<br>バージョン：<span id="appVer"></span> <button class="link" id="updBtn" style="margin:0 0 0 10px">更新を確認</button></div>
     </div>
   </div>
 </div>
@@ -687,7 +687,7 @@ const LS_API="keihi_apikey_v1";
 const LS_SYNC="keihi_syncurl_v1";
 const LS_KOSAI="keihi_kosai_v1";
 const LS_TATEKAE="keihi_tatekae_v1";
-const APP_VER="2026.10.24-1";
+const APP_VER="2026.10.24-2";
 
 let entries=[];
 let editingId=null;
@@ -1469,10 +1469,50 @@ function closeSheets(){
   document.body.style.overflow="";
 }
 
+/* ---------- 自動更新（ホーム画面アプリが古い版を握り続ける対策） ---------- */
+function verCmp(a,b){
+  const pa=String(a).split(/[.\-]/).map(Number),pb=String(b).split(/[.\-]/).map(Number);
+  for(let i=0;i<Math.max(pa.length,pb.length);i++){
+    const d=(pa[i]||0)-(pb[i]||0);if(d)return d>0?1:-1;
+  }
+  return 0;
+}
+function reloadTo(url){location.replace(url)}
+function appBusy(){return !!document.querySelector(".sheet.on,.doc-overlay.on")}
+async function checkForUpdate(manual){
+  try{
+    const base=location.origin+location.pathname;
+    const res=await fetch(base+"?_="+Date.now(),{cache:"no-store"});
+    if(!res.ok)throw new Error("http "+res.status);
+    const t=await res.text();
+    const m=t.match(new RegExp('const APP_'+'VER="([^"]+)"'));
+    if(!m)throw new Error("no version");
+    const latest=m[1];
+    if(verCmp(latest,APP_VER)>0){
+      const k="keihi_upd_"+latest;
+      let tried=false;try{tried=!!sessionStorage.getItem(k)}catch(_){}
+      if(!manual){
+        if(appBusy())return;                       // 入力中は読み込み直さない
+        if(tried){toast("新しい版があります。設定の「更新を確認」で更新できます");return}  // 無限ループ防止
+      }
+      try{sessionStorage.setItem(k,"1")}catch(_){}
+      toast("新しい版に更新します…");
+      setTimeout(()=>reloadTo(base+"?v="+encodeURIComponent(latest)+"&t="+Date.now()),600);
+    }else if(manual){
+      toast("最新版です（"+APP_VER+"）");
+    }
+  }catch(e){
+    if(manual)toast("更新を確認できませんでした（通信を確認）",true);
+  }
+}
+
 /* ---------- wire ---------- */
 function init(){
   load();render();
   const verEl=$("#appVer");if(verEl)verEl.textContent=APP_VER;
+  $("#updBtn").onclick=()=>checkForUpdate(true);
+  setTimeout(()=>checkForUpdate(false),1500);
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkForUpdate(false)});
   $("#fabAdd").onclick=openAdd;
   $("#entryClose").onclick=closeSheets;
   $("#setClose").onclick=closeSheets;
