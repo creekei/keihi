@@ -248,7 +248,7 @@
     transform:translateX(-50%) translateY(20px);
     background:#000d;border:1px solid var(--line);color:var(--ink);
     padding:11px 20px;border-radius:24px;font-size:13.5px;font-weight:600;
-    z-index:80;opacity:0;transition:.25s;pointer-events:none;white-space:nowrap;
+    z-index:80;opacity:0;transition:.25s;pointer-events:none;white-space:normal;width:max-content;max-width:calc(100vw - 32px);text-align:center;word-break:break-word;
     box-shadow:var(--shadow);
   }
   .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -328,6 +328,11 @@
   .tk-table td{border:1px solid #000;padding:9px 12px;height:42px;vertical-align:middle}
   .tk-table .tk-lbl{width:120px;text-align:center;font-size:15px;white-space:nowrap}
   .tk-gap{height:26px}
+
+  /* PDF化の描画中だけ、画面用の装飾（青い空欄・点線）を消す */
+  .rendering td[contenteditable]:empty{background:none!important}
+  .rendering b[contenteditable]{border-bottom:none!important}
+  .rendering [contenteditable]:focus{background:none!important}
 
   @media print{
     body{background:#fff}
@@ -682,7 +687,7 @@ const LS_API="keihi_apikey_v1";
 const LS_SYNC="keihi_syncurl_v1";
 const LS_KOSAI="keihi_kosai_v1";
 const LS_TATEKAE="keihi_tatekae_v1";
-const APP_VER="2026.06.28-3";
+const APP_VER="2026.10.24-1";
 
 let entries=[];
 let editingId=null;
@@ -790,7 +795,7 @@ function ym(d){const m=String(d||"").match(/(\d{4})-(\d{2})/);return m?`${m[1]}�
 let toastT;
 function toast(msg,isErr){
   const t=$("#toast");t.textContent=msg;t.className="toast on"+(isErr?" err":"");
-  clearTimeout(toastT);toastT=setTimeout(()=>t.className="toast",2200);
+  clearTimeout(toastT);toastT=setTimeout(()=>t.className="toast",isErr&&String(msg).length>30?7000:2200);
 }
 
 /* ---------- render ---------- */
@@ -923,6 +928,27 @@ function delEntry(){
 }
 
 /* ---------- AI ---------- */
+// 使えるGeminiモデルを自動で探す（モデルが終了・改名されても動くように）
+const LS_MODEL="keihi_model_v1";
+const MODEL_FALLBACK=["gemini-2.5-flash","gemini-2.5-flash-lite","gemini-3.5-flash","gemini-3.1-flash-lite","gemini-flash-latest"];
+async function listFlashModels(key){
+  const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(key)}`);
+  const json=await res.json();
+  if(json.error)throw new Error(json.error.message||"models.list failed");
+  const ok=(json.models||[])
+    .filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent"))
+    .map(m=>String(m.name).replace(/^models\//,""))
+    .filter(n=>/^gemini-.*flash/.test(n)&&!/image|tts|live|audio|robotics|computer|embedding|thinking/.test(n));
+  // 新しい版・安定版（previewでないもの）を優先
+  const ver=n=>{const m=n.match(/gemini-(\d+(?:\.\d+)?)/);return m?parseFloat(m[1]):0};
+  ok.sort((a,b)=>(/preview|exp/.test(a)-/preview|exp/.test(b))||(ver(b)-ver(a))||a.localeCompare(b));
+  return ok;
+}
+async function callGemini(model,key,body){
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+  const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  return res.json();
+}
 async function runAI(){
   const key=getKey();
   if(!key){toast("先に設定でAPIキーを入力してください",true);openSheet("#setSheet");return}
@@ -935,17 +961,50 @@ async function runAI(){
       +"shopName(発行店名・会場名), address(発行店の住所), phone(発行店の電話番号), "
       +"recipient(宛名・ご芳名。「様」は除く). 読み取れない項目は空文字にして。";
     const body={contents:[{parts:[{text:prompt},{inlineData:{mimeType:pendingReceipt.mime,data:pendingReceipt.b64}}]}]};
-    const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`;
-    const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    const json=await res.json();
-    if(json.error){
-      const c=json.error.code;
-      toast(c===503?"AIが混雑中。少し待って再試行を":("エラー: "+(json.error.message||c)),true);
-      return;
+
+    // 前回成功したモデル → 既定の候補 の順に試す。404等で使えなければ自動探索
+    const saved=localStorage.getItem(LS_MODEL);
+    let queue=[...new Set([saved,...MODEL_FALLBACK].filter(Boolean))];
+    let json=null,used=null,lastErr=null,discovered=false;
+    for(let i=0;i<queue.length;i++){
+      const m=queue[i];
+      let j;
+      try{j=await callGemini(m,key,body)}catch(e){lastErr="通信エラー";continue}
+      if(!j.error){json=j;used=m;break}
+      lastErr=`${j.error.code||""} ${j.error.message||""}`.trim();
+      const c=j.error.code,st=j.error.status;
+      // APIキー不正・権限なしは別モデルを試しても無駄
+      if(c===400&&/API key|API_KEY/i.test(j.error.message||""))break;
+      if(c===401||c===403)break;
+      // モデルが無い/使えない/混雑 → 次の候補へ。候補が尽きたら一度だけ一覧から探索
+      if(i===queue.length-1&&!discovered&&(c===404||st==="NOT_FOUND"||c===503||c===429)){
+        discovered=true;
+        try{
+          const found=(await listFlashModels(key)).filter(n=>!queue.includes(n)).slice(0,4);
+          queue=queue.concat(found);
+        }catch(_){}
+      }
     }
-    const text=json?.candidates?.[0]?.content?.parts?.[0]?.text||"";
+    if(!json){
+      const c=parseInt(lastErr)||0;
+      const quota=c===429||/quota|billing|RESOURCE_EXHAUSTED/i.test(lastErr||"");
+      const msg=quota?"Geminiの利用上限に達しました。時間をおくか、ai.studio/projects で課金設定を確認してください"
+        :c===503?"AIが混雑中。少し待って再試行を"
+        :/API key|API_KEY/i.test(lastErr||"")?"APIキーが正しくありません（設定で確認）"
+        :("AIエラー: "+(lastErr||"不明"));
+      toast(msg,true);return;
+    }
+    if(used!==saved)localStorage.setItem(LS_MODEL,used);
+
+    const parts=json?.candidates?.[0]?.content?.parts||[];
+    const text=parts.map(p=>p.text||"").join("");
     const clean=text.replace(/```json/gi,"").replace(/```/g,"").trim();
-    let r;try{r=JSON.parse(clean)}catch(_){toast("読み取り結果を解釈できませんでした",true);return}
+    let r;
+    try{r=JSON.parse(clean)}catch(_){
+      const mm=clean.match(/\{[\s\S]*\}/);
+      try{r=mm?JSON.parse(mm[0]):null}catch(__){r=null}
+    }
+    if(!r){toast("読み取り結果を解釈できませんでした",true);return}
     if(r.date)$("#fDate").value=normDate(r.date);
     if(r.amount!=null)$("#fAmount").value=String(r.amount).replace(/[^0-9.]/g,"");
     if(r.itemName)$("#fItem").value=r.itemName;
@@ -955,7 +1014,7 @@ async function runAI(){
     if(r.recipient)$("#fMemo").value=r.recipient;
     toast("読み取り完了 ✨");
   }catch(err){
-    toast("通信に失敗しました",true);
+    toast("通信に失敗しました（電波・ネット接続を確認）",true);
   }finally{
     btn.disabled=false;btn.innerHTML="✨ AIで読み取る";
   }
@@ -1135,6 +1194,7 @@ function saveKosaiMemory(){
 function fmtNum(v){v=String(v==null?"":v).replace(/[^0-9.]/g,"");return v?yen(v):""}
 // ② 入力内容を用紙に流し込んでプレビュー表示
 function previewKosai(){
+  resetPdfCache("kosai","#kosaiPrint");
   saveKosaiMemory();
   const appW=wareki(normDate($("#kf_appDate").value));
   const setW=wareki(normDate($("#kf_setDate").value));
@@ -1180,7 +1240,7 @@ function backToKosaiForm(){
   openSheet("#kosaiFormSheet");
 }
 // ③ 発行（印刷／PDF）。プレビューでの微修正も保存
-function printKosai(){saveKosai();window.print()}
+function printKosai(){saveKosai();issueDoc("kosai","#kosaiPaper","交際費支出伺","#kosaiPrint")}
 
 /* ---------- 立替金精算書 ---------- */
 const TATEKAE_DEFAULTS={
@@ -1227,6 +1287,7 @@ function openTatekae(){
 }
 // ② プレビュー表示
 function previewTatekae(){
+  resetPdfCache("tatekae","#tatekaePrint");
   saveTatekaeMemory();
   $("#t_date").textContent=jpDate(normDate($("#tf_date").value));
   $("#t_bumon").textContent=$("#tf_bumon").value;
@@ -1248,7 +1309,150 @@ function backToTatekaeForm(){
   $("#tatekaeOverlay").classList.remove("on");
   openSheet("#tatekaeFormSheet");
 }
-function printTatekae(){window.print()}
+function printTatekae(){issueDoc("tatekae","#tatekaePaper","立替金精算書","#tatekaePrint")}
+/* ---------- PDF生成（iPhoneのホーム画面アプリは window.print() が使えないため） ---------- */
+function isIOS(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+}
+// 用紙(DOM)をcanvasに描く：罫線・背景・文字(1文字ずつ位置を取得)・SVG印影
+async function paperToCanvas(paper,scale){
+  paper.classList.add("rendering");
+  const prevT=paper.style.transform;paper.style.transform="none";
+  try{
+    const pr=paper.getBoundingClientRect();
+    const cv=document.createElement("canvas");
+    cv.width=Math.round(pr.width*scale);cv.height=Math.round(pr.height*scale);
+    const ctx=cv.getContext("2d");
+    ctx.fillStyle="#fff";ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.scale(scale,scale);
+    const X=x=>x-pr.left,Y=y=>y-pr.top;
+    const jobs=[];
+    const els=[paper,...paper.querySelectorAll("*")];
+    for(const el of els){
+      if(el.tagName.toLowerCase()==="svg"){
+        const r=el.getBoundingClientRect();
+        const xml=new XMLSerializer().serializeToString(el);
+        jobs.push(new Promise(res=>{
+          const im=new Image();
+          im.onload=()=>{ctx.drawImage(im,X(r.left),Y(r.top),r.width,r.height);res()};
+          im.onerror=()=>res();
+          im.src="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(xml);
+        }));
+        continue;
+      }
+      if(el.closest("svg"))continue;
+      const cs=getComputedStyle(el),r=el.getBoundingClientRect();
+      if(!r.width&&!r.height)continue;
+      if(el!==paper&&cs.backgroundColor&&cs.backgroundColor!=="rgba(0, 0, 0, 0)"&&cs.backgroundColor!=="transparent"){
+        ctx.fillStyle=cs.backgroundColor;ctx.fillRect(X(r.left),Y(r.top),r.width,r.height);
+      }
+      const line=(side,x1,y1,x2,y2)=>{
+        const w=parseFloat(cs["border"+side+"Width"])||0;
+        if(w>0&&cs["border"+side+"Style"]!=="none"&&cs["border"+side+"Style"]!=="hidden"){
+          ctx.strokeStyle=cs["border"+side+"Color"];ctx.lineWidth=w;
+          ctx.beginPath();ctx.moveTo(X(x1),Y(y1));ctx.lineTo(X(x2),Y(y2));ctx.stroke();
+        }
+      };
+      if(el!==paper){
+        line("Top",r.left,r.top,r.right,r.top);
+        line("Bottom",r.left,r.bottom,r.right,r.bottom);
+        line("Left",r.left,r.top,r.left,r.bottom);
+        line("Right",r.right,r.top,r.right,r.bottom);
+      }
+      for(const n of el.childNodes){
+        if(n.nodeType!==3||!n.nodeValue.trim())continue;
+        ctx.font=`${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        ctx.fillStyle=cs.color;ctx.textBaseline="middle";
+        const rg=document.createRange();
+        for(let i=0;i<n.nodeValue.length;i++){
+          const ch=n.nodeValue[i];
+          if(!ch.trim())continue;
+          rg.setStart(n,i);rg.setEnd(n,i+1);
+          const cr=rg.getClientRects()[0];
+          if(!cr||!cr.width)continue;
+          ctx.fillText(ch,X(cr.left),Y(cr.top+cr.height/2));
+        }
+      }
+    }
+    await Promise.all(jobs);
+    return cv;
+  }finally{
+    paper.style.transform=prevT;paper.classList.remove("rendering");
+  }
+}
+// JPEG1枚をA4のPDFに入れる（外部ライブラリなし）
+function buildPdf(jpeg,iw,ih){
+  const enc=s=>new TextEncoder().encode(s);
+  const PW=595.28,PH=841.89;
+  let dw=190/25.4*72;                       // 用紙幅190mm
+  let dh=dw*ih/iw;
+  if(dh>PH){dh=PH;dw=dh*iw/ih}
+  const dx=(PW-dw)/2,dy=PH-dh;
+  const content=`q ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${dx.toFixed(2)} ${dy.toFixed(2)} cm /Im0 Do Q`;
+  const parts=[];const offs=[];let len=0;
+  const add=u=>{parts.push(u);len+=u.length};
+  add(enc("%PDF-1.4\n"));
+  const obj=(n,body)=>{offs[n]=len;add(enc(`${n} 0 obj\n`));body.forEach(b=>add(typeof b==="string"?enc(b):b));add(enc("\nendobj\n"))};
+  obj(1,["<< /Type /Catalog /Pages 2 0 R >>"]);
+  obj(2,["<< /Type /Pages /Kids [3 0 R] /Count 1 >>"]);
+  obj(3,[`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW} ${PH}] /Resources << /XObject << /Im0 5 0 R >> /ProcSet [/PDF /ImageC] >> /Contents 4 0 R >>`]);
+  obj(4,[`<< /Length ${content.length} >>\nstream\n${content}\nendstream`]);
+  obj(5,[`<< /Type /XObject /Subtype /Image /Width ${iw} /Height ${ih} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`,jpeg,"\nendstream"]);
+  const xrefAt=len;
+  let x=`xref\n0 6\n0000000000 65535 f \n`;
+  for(let i=1;i<=5;i++)x+=String(offs[i]).padStart(10,"0")+" 00000 n \n";
+  x+=`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefAt}\n%%EOF\n`;
+  add(enc(x));
+  const out=new Uint8Array(len);let o=0;
+  parts.forEach(u=>{out.set(u,o);o+=u.length});
+  return out;
+}
+async function makePdfFile(paperSel,fileName){
+  const cv=await paperToCanvas($(paperSel),2.5);
+  const b64=cv.toDataURL("image/jpeg",0.92).split(",")[1];
+  const bin=atob(b64);const jpeg=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)jpeg[i]=bin.charCodeAt(i);
+  return new File([buildPdf(jpeg,cv.width,cv.height)],fileName,{type:"application/pdf"});
+}
+// 共有シート（ファイルに保存／プリント／AirDrop等）へ渡す。だめなら新しいタブで開く
+async function shareOrOpenPdf(file){
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file],title:file.name});return "shared"}
+    catch(e){
+      if(e&&e.name==="AbortError")return "cancel";
+      if(e&&e.name==="NotAllowedError")return "needtap";
+    }
+  }
+  const url=URL.createObjectURL(file);
+  const a=document.createElement("a");a.href=url;a.target="_blank";a.rel="noopener";a.download=file.name;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+  return "opened";
+}
+const pdfCache={};
+// 書類ごとの「印刷/PDF」ボタンの共通処理
+async function issueDoc(key,paperSel,baseName,btnSel){
+  if(!isIOS()){window.print();return}          // Macなど：従来どおりブラウザ印刷
+  const btn=$(btnSel);
+  try{
+    let file=pdfCache[key];
+    if(!file){
+      btn.disabled=true;btn.textContent="PDF作成中…";
+      const d=new Date(),ymd=d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0");
+      file=await makePdfFile(paperSel,`${baseName}_${ymd}.pdf`);
+      pdfCache[key]=file;
+    }
+    const r=await shareOrOpenPdf(file);
+    if(r==="needtap"){btn.textContent="PDFを共有 / 保存";toast("もう一度押すと共有・保存できます");return}
+    btn.textContent="印刷 / PDF";
+    if(r==="opened")toast("PDFを開きました");
+  }catch(e){
+    btn.textContent="印刷 / PDF";
+    toast("PDFの作成に失敗しました",true);
+  }finally{btn.disabled=false}
+}
+function resetPdfCache(key,btnSel){pdfCache[key]=null;const b=$(btnSel);if(b)b.textContent="印刷 / PDF"}
+
 
 /* ---------- sheets ---------- */
 function openSheet(sel){
@@ -1285,6 +1489,7 @@ function init(){
   $("#tatekaePreviewBtn").onclick=previewTatekae;
   $("#tatekaeBack").onclick=backToTatekaeForm;
   $("#tatekaePrint").onclick=printTatekae;
+  $("#kosaiPaper").addEventListener("input",()=>resetPdfCache("kosai","#kosaiPrint"));
   window.addEventListener("resize",()=>{
     if($("#kosaiOverlay").classList.contains("on"))scaleKosaiPaper();
     if($("#tatekaeOverlay").classList.contains("on"))scaleTatekaePaper();
